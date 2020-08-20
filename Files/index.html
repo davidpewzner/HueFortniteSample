@@ -1,0 +1,414 @@
+﻿<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="css/style.css" />
+    <script src='http://code.jquery.com/jquery-1.11.2.min.js' type='text/javascript' ></script>
+    <script src='huepi.js' type='text/javascript'></script>
+    <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+    <title>Hue Fortnite</title>
+    <link href="https://fonts.googleapis.com/css?family=Titillium+Web:300,400,600" rel="stylesheet">
+
+    <script>
+      function dragResize(edge){
+        overwolf.windows.getCurrentWindow(function(result){
+          if (result.status=="success"){
+            overwolf.windows.dragResize(result.window.id, edge);
+          }
+        });
+      };
+
+      function dragMove(){
+        overwolf.windows.getCurrentWindow(function(result){
+          if (result.status=="success" && result.window.state !== "Maximized"){
+            overwolf.windows.dragMove(result.window.id);
+          }
+        });
+      };
+
+      function closeWindow(){
+        overwolf.windows.getCurrentWindow(function(result){
+          if (result.status=="success"){
+            overwolf.windows.close(result.window.id);
+          }
+        });
+      };
+
+      function minimize(){
+        overwolf.windows.getCurrentWindow(function(result){
+          if (result.status=="success"){
+            overwolf.windows.minimize(result.window.id);
+          }
+        });
+      };
+
+      function toggleMaximize(){
+        let element = document.querySelector('.maximize-restore-selector'),
+            root = document.documentElement;
+
+        overwolf.windows.getCurrentWindow(function(result){
+          if (result.status !== "success") {
+            return;
+          }
+
+          if (element.checked) {
+            overwolf.windows.restore(result.window.id);
+            root.classList.remove('maximized');
+          } else {
+            overwolf.windows.maximize(result.window.id);
+            root.classList.add('maximized');
+          }
+        });
+      };
+
+
+      function openSubWindow(){
+        //alert("the subwindow will only be visible inside a game");
+        overwolf.windows.obtainDeclaredWindow("SubWindow", function(result){
+          if (result.status == "success"){
+            overwolf.windows.restore(result.window.id, function(result){
+                console.log(result);
+            });
+          }
+        });
+      };
+
+
+    </script>
+
+
+
+<script type='text/javascript' >
+  var MyHue = new huepi();
+  var HeartbeatInterval;
+  $(document).ready(onStartup);
+
+
+  function onStartup() {
+    LightSwitchOnEvent = document.createEvent("Event");
+    LightSwitchOnEvent.initEvent("LightSwitchOn", true, true);
+    document.addEventListener("LightSwitchOn", onLightSwitchOn, false);
+    LightSwitchOffEvent = document.createEvent("Event");
+    LightSwitchOffEvent.initEvent("LightSwitchOff", true, true);
+    document.addEventListener("LightSwitchOff", onLightSwitchOff, false);
+
+    onResume();
+
+try{
+  overwolf.games.onGameInfoUpdated.addListener(function (res) {
+    console.log("onGameInfoUpdated: " + JSON.stringify(res));
+    if (gameLaunched(res)) {
+      registerEvents();
+      setTimeout(setFeatures, 1000);
+    }
+  });
+  overwolf.games.getRunningGameInfo(function (res) {
+
+    if (gameRunning(res)) {
+      registerEvents();
+      setTimeout(setFeatures, 1000);
+    }
+    //console.log("getRunningGameInfo: " + JSON.stringify(res));
+  });
+} catch(ex) {
+  console.log(JSON.stringify(ex));
+}
+
+  }
+
+  function onResume() {
+    ConnectToHueBridge();
+    HeartbeatInterval = setInterval(StatusHeartbeat, 2500);
+  }
+
+  function onPause() {
+    window.clearInterval(HeartbeatInterval);
+    $('#HUEInfoBar').show(500);
+  }
+
+  function StatusHeartbeat() {
+    MyHue.BridgeGetData().then(function UpdateUI() {
+      $('#HUEBridgeName').text('Bridge Name: ' +MyHue.BridgeName);
+      $('#HUEStatus').text('Connected');
+      $('#HUEInfoBar').slideUp(1500);
+  }, function BridgeGetDataFailed() {
+      $('#HUEStatus').text('StatusHeartbeat BridgeGet Failed');
+      setTimeout(function() {
+        onPause();
+        onResume();
+      }, 100);
+    });
+  }
+
+  // Check Cached Bridge IP
+  //   Discover Bridge via Portal
+  //   Check if UserName is Whitelisted (via HEUPI.BridgeGetData)
+  //     if Not->Try to Create User
+  function ConnectToHueBridge() {
+    if (!localStorage.MyHueBridgeIP) { // No Cached BridgeIP?
+      $('#HUEStatus').text('Trying to Discover HUE Bridge via HUE Portal');
+      MyHue.PortalDiscoverLocalBridges().then(function BridgesDiscovered() {
+        $('#HUEBridgeIP').text('Bridge IP: ' + MyHue.BridgeIP);
+        MyHue.BridgeGetConfig().then(function BridgeConfigReceived() {
+          $('#HUEBridgeName').text('Bridge Name: ' +MyHue.BridgeName);
+          MyHue.BridgeGetData().then(function BridgeDataReceived() {
+            localStorage.MyHueBridgeIP = MyHue.BridgeIP; // Cache BridgeIP
+            $('#HUEStatus').text('Connected');
+          }, function UnableToRetreiveBridgeData() {
+            openSubWindow();
+            $('#HUEStatus').text('Please press connect button on the hue Bridge');
+            MyHue.BridgeCreateUser().then(function BridegeUserCreated() {
+              localStorage.MyHueBridgeIP = MyHue.BridgeIP; // Cache BridgeIP
+              $('#HUEStatus').text('Connected');
+              return;
+            }, function UnableToCreateUseronBridge() {
+              $('#HUEStatus').text('.Please press connect button on the hue Bridge.');
+              return;
+            });
+          });
+        }, function UnableToRetreiveBridgeConfig() {
+          $('#HUEStatus').text('Unable to Retreive Bridge Configuration');
+          return;
+        });
+      }, function UnableToDiscoverLocalBridgesViaPortal() {
+        $('#HUEStatus').text('Unable to find Local Bridge via Portal');
+        return;
+      });
+    } else {
+      $('#HUEStatus').text('Using Cached Bridge IP');
+      MyHue.BridgeIP = localStorage.MyHueBridgeIP;
+      $('#HUEBridgeIP').text('Cached Bridge IP: ' + MyHue.BridgeIP);
+      MyHue.BridgeGetConfig().then(function CachedBridgeConfigReceived() {
+        $('#HUEBridgeName').text('Bridge Name: ' +MyHue.BridgeName);
+        MyHue.BridgeGetData().then(function CachedBridgeDataReceived() {
+          $('#HUEStatus').text('Connected');
+        }, function UnableToRetreiveCachedBridgeData() {
+          delete localStorage.MyHueBridgeIP; // not Whitelisted anymore
+          $('#HUEStatus').text('Unable to Retreive Cached Bridge Data');
+          return;
+        });
+      }, function UnableToRetreiveCachedBridgeConfig() {
+        delete localStorage.MyHueBridgeIP; // not found anymore
+        $('#HUEStatus').text('Unable to Retreive Cached Bridge Configuration');
+      });
+    }
+  }
+
+  function onLightSwitchOn(Event) {
+    MyHue.GroupOn(0);
+    MyHue.GroupSetCT(0, 467);
+    MyHue.GroupSetBrightness(0, 144);
+  }
+
+  function onLightSwitchOff(Event) {
+    MyHue.GroupOff(0);
+  }
+
+
+
+
+var g_interestedInFeatures = [
+  'kill',
+  'death',
+  'game_info',
+  'match_info',
+  'phase'
+];
+
+function registerEvents() {
+  overwolf.games.events.onError.addListener(function(info) {
+    console.log("Error: " + JSON.stringify(info));
+  });
+
+  overwolf.games.events.onInfoUpdates2.addListener(function(info) {
+    console.log("Info UPDATE: " + JSON.stringify(info));
+    try{
+      if(info.info.game_info.phase == "lobby") MyHue.GroupSetHSB(0, 0, 0, 255, 3);
+      if(info.info.game_info.phase == "loading_screen") MyHue.GroupSetHSB(0, 0, 0, 60, 3);
+    } catch(ex){}
+    
+  });
+
+  // an event triggerd
+  overwolf.games.events.onNewEvents.addListener(function(info) {
+    console.log("EVENT FIRED: " + JSON.stringify(info));
+    playExplosion();
+  });
+}
+
+function playExplosion(){
+  MyHue.GroupSetHSB(0, 0, 255, 255, 2);
+  window.setTimeout(finishExplosion, 200);
+}
+
+function finishExplosion(){
+  MyHue.GroupSetHSB(0, 0, 0, 60, 30);
+}
+
+function gameLaunched(gameInfoResult) {
+  if (!gameInfoResult) {
+    return false;
+  }
+
+  if (!gameInfoResult.gameInfo) {
+    return false;
+  }
+
+  if (!gameInfoResult.runningChanged && !gameInfoResult.gameChanged) {
+    return false;
+  }
+
+  if (!gameInfoResult.gameInfo.isRunning) {
+    return false;
+  }
+
+  // NOTE: we divide by 10 to get the game class id without it's sequence number
+  if (Math.floor(gameInfoResult.gameInfo.id/10) != 21216) {
+    return false;
+  }
+
+  console.log("Fortnite Launched");
+  return true;
+
+}
+
+function gameRunning(gameInfo) {
+  if (!gameInfo) {
+    return false;
+  }
+
+  if (!gameInfo.isRunning) {
+    return false;
+  }
+
+  if (Math.floor(gameInfo.id/10) != 21216) {
+    return false;
+  }
+
+  console.log("Fortnite running");
+  return true;
+
+}
+
+
+function setFeatures() {
+  overwolf.games.events.setRequiredFeatures(g_interestedInFeatures, function(info) {
+    if (info.status == "error")
+    {
+      console.log("Could not set required features: " + info.reason);
+      console.log("Trying in 2 seconds");
+      window.setTimeout(setFeatures, 2000);
+      return;
+    }
+
+    console.log("Set required features:");
+    console.log(JSON.stringify(info));
+  });
+}
+
+
+
+
+</script>
+
+
+
+
+
+  </head>
+
+  <body>
+    <div class="content" onmousedown="dragMove();">
+
+      <header>
+
+
+        <div class="window-controls-group">
+          <button class="window-control" onclick="showSupport()">
+            <svg class="svg-icon-fill">
+              <use xlink:href="assets/svg/sprite.svg#window-control_support" />
+            </svg>
+          </button>
+
+          <button class="window-control">
+            <svg class="svg-icon-fill">
+              <use xlink:href="assets/svg/sprite.svg#window-control_settings" />
+            </svg>
+          </button>
+
+          <button class="window-control" onclick="minimize()">
+            <svg class="svg-icon-fill">
+              <use xlink:href="assets/svg/sprite.svg#window-control_minimize" />
+            </svg>
+          </button>
+
+          <button class="window-control" onclick="toggleMaximize()">
+            <input type="checkbox" class="maximize-restore-selector toggle-icons" checked />
+            <svg class="svg-icon-fill svg-icon-restore">
+              <use xlink:href="assets/svg/sprite.svg#window-control_restore" />
+            </svg>
+            <svg class="svg-icon-fill svg-icon-maximize">
+              <use xlink:href="assets/svg/sprite.svg#window-control_maximize" />
+            </svg>
+          </button>
+
+          <button class="window-control window-control-close" onclick="closeWindow();">
+            <svg class="svg-icon-fill">
+              <use xlink:href="assets/svg/sprite.svg#window-control_close" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <h1>Hue + Fortnite Sample</h1>
+        <p>Controls & game integration</p>
+<br/>
+        <div class='footer'>
+          <div class="btn-group" >
+
+              <button class="btn" onclick="MyHue.GroupOn(0);">All On</button>
+              <button class="btn" onclick="MyHue.GroupOff(0);">All Off</button>
+
+          </div>
+          <br/><br/>
+          <h1>Concept game integration for Fortnite:</h1>
+          <li>Bright white lights in lobby</li>
+          <li>Dim lights in battle</li>
+          <li>Explosion effect on kill, death events</li>
+          <br/>
+          <div id='HUEInfoBar'>
+            <div id='HUEBridgeIP'>
+              Bridge IP: . . .
+            </div>
+            <div id='HUEBridgeName'>
+              Bridge Name: . . .
+            </div>
+            <div id='HUEStatus'>
+              Status . . . .
+            </div>
+          </div>
+        </div><!-- /footer -->
+    
+      </main>
+    </div>
+
+
+
+
+
+
+
+
+
+
+    <div class="resize horizontal top" onmousedown="dragResize('Top');"></div>
+    <div class="resize vertical left" onmousedown="dragResize('Left');"></div>
+    <div class="resize vertical right" onmousedown="dragResize('Right');"></div>
+    <div class="resize horizontal bottom" onmousedown="dragResize('Bottom');"></div>
+
+    <div class="resize corner top-left" onmousedown="dragResize('TopLeft');"></div>
+    <div class="resize corner top-right" onmousedown="dragResize('TopRight');"></div>
+    <div class="resize corner bottom-left" onmousedown="dragResize('BottomLeft');"></div>
+    <div class="resize corner bottom-right" onmousedown="dragResize('BottomRight');"></div>
+  </body>
+</html>

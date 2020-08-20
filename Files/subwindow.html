@@ -1,0 +1,34 @@
+﻿<!DOCTYPE html>
+<html>
+	<head> 
+		<link rel="stylesheet" href="css/style.css" />
+		<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+		<title>Sub window</title>
+		<script>
+			function dragMove(){
+				overwolf.windows.getCurrentWindow(function(result){
+					if (result.status=="success"){
+						overwolf.windows.dragMove(result.window.id);
+					}
+				});
+			};
+			
+			function closeWindow(){
+				overwolf.windows.getCurrentWindow(function(result){
+					if (result.status=="success"){
+						overwolf.windows.close(result.window.id);
+					}
+				});
+			};
+		</script>
+	</head>
+
+	<body>
+		<div class="content" onmousedown="dragMove();">
+			<main>
+				<h1>Push the link button on the bridge then manually close this window.</h1>
+				<button class="btn" onclick="closeWindow();">Close</button>
+			</main>
+		</div>
+	</body>
+</html>
